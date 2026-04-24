@@ -1,0 +1,336 @@
+```html
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtual Hand Experience 3D</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #1a1a1a; font-family: sans-serif; }
+        canvas { display: block; }
+        #video-container {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 160px;
+            height: 120px;
+            border: 2px solid #3b82f6;
+            border-radius: 12px;
+            overflow: hidden;
+            z-index: 100;
+            background: #000;
+        }
+        #input_video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); opacity: 0.6; }
+        #ui-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 200;
+            background: rgba(20, 20, 20, 0.9);
+            backdrop-filter: blur(10px);
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .btn-action { @apply flex items-center justify-center w-full py-2 px-4 rounded-lg font-bold transition-all active:scale-95 mb-2 text-[10px] text-white uppercase tracking-widest; }
+        #loading-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #111; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; z-index: 1000; color: white;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loading-overlay">
+        <div class="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p class="text-sm font-mono tracking-widest">MENYIAPKAN LABORATORIUM VIRTUAL...</p>
+    </div>
+
+    <div id="ui-panel" class="flex flex-col w-48 shadow-2xl">
+        <h1 class="text-blue-400 text-[11px] font-black mb-1 uppercase tracking-widest text-center">Virtual Hand v2.0</h1>
+        <p id="fps-counter" class="text-[9px] text-gray-500 mb-4 text-center font-mono">FPS: --</p>
+        
+        <button onclick="addObject('box')" class="btn-action bg-orange-600 hover:bg-orange-500"> + TAMBAH BALOK </button>
+        <button onclick="addObject('sphere')" class="btn-action bg-cyan-600 hover:bg-cyan-500"> + TAMBAH BOLA </button>
+        
+        <div class="h-[1px] bg-white/10 my-3"></div>
+        
+        <button onclick="clearScene()" class="btn-action bg-red-700 hover:bg-red-600"> RESET ARENA </button>
+        
+        <div id="status-box" class="mt-2 py-1.5 px-2 rounded bg-black/40 border border-white/5 flex items-center justify-center gap-2">
+            <div id="status-dot" class="w-2 h-2 rounded-full bg-red-500"></div>
+            <p id="status" class="text-[9px] text-gray-400 font-mono uppercase">Mencari Tangan...</p>
+        </div>
+    </div>
+
+    <div id="video-container">
+        <video id="input_video" autoplay muted playsinline></video>
+    </div>
+
+    <script>
+        let scene, camera, renderer;
+        const objects = [];
+        const handJoints = []; 
+        let muscleLines; 
+        let grabbedObject = null;
+        
+        // Pengaturan Posisi Target (Smoothing)
+        const targetJointPositions = Array.from({ length: 21 }, () => new THREE.Vector3());
+        const SMOOTH_FACTOR = 0.35;
+
+        // Fisika Bumi
+        const GRAVITY = -0.075;
+        const BOUNCE = 0.2;
+        const FRICTION = 0.92;
+
+        const CONNECTIONS = [
+            [0, 1, 2, 3, 4], [0, 5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16], [17, 18, 19, 20], [0, 5, 9, 13, 17, 0]   
+        ];
+
+        function createFloorTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256; canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, 256, 256);
+            ctx.fillStyle = 'rgba(80, 70, 60, 0.08)';
+            for (let i = 0; i < 1500; i++) {
+                ctx.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
+            }
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(15, 15);
+            return texture;
+        }
+
+        function initThree() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x2a2a2a);
+            scene.fog = new THREE.Fog(0x2a2a2a, 50, 250);
+
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 35, 80);
+            camera.lookAt(0, 5, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            document.body.appendChild(renderer.domElement);
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+            const pLight = new THREE.PointLight(0xffffff, 1.2, 300);
+            pLight.position.set(30, 80, 50);
+            pLight.castShadow = true;
+            scene.add(pLight);
+
+            const floor = new THREE.Mesh(
+                new THREE.PlaneGeometry(500, 500),
+                new THREE.MeshStandardMaterial({ color: 0xffffff, map: createFloorTexture(), roughness: 0.8 })
+            );
+            floor.rotation.x = -Math.PI / 2;
+            floor.receiveShadow = true;
+            scene.add(floor);
+
+            const jointGeo = new THREE.SphereGeometry(0.35, 8, 8);
+            const jointMat = new THREE.MeshStandardMaterial({ 
+                color: 0x00d2ff, emissive: 0x00d2ff, emissiveIntensity: 1.0, metalness: 0.8
+            });
+            
+            for (let i = 0; i < 21; i++) {
+                const joint = new THREE.Mesh(jointGeo, jointMat.clone());
+                joint.visible = false;
+                joint.castShadow = true;
+                scene.add(joint);
+                handJoints.push(joint);
+            }
+
+            const lineMat = new THREE.LineBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0.4 });
+            const lineGeo = new THREE.BufferGeometry();
+            muscleLines = new THREE.LineSegments(lineGeo, lineMat);
+            scene.add(muscleLines);
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+            
+            animate();
+            document.getElementById('loading-overlay').style.display = 'none';
+        }
+
+        function addObject(type) {
+            const size = 3.8; 
+            const geo = type === 'box' ? new THREE.BoxGeometry(size, size, size) : new THREE.SphereGeometry(size/1.5, 24, 24);
+            const colors = [0xff00ff, 0x00ff00, 0xffff00, 0xff4400, 0x00ffff, 0x0055ff];
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            const mat = new THREE.MeshStandardMaterial({ 
+                color: color, emissive: color, emissiveIntensity: 0.1, roughness: 0.1, metalness: 0.2
+            });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set((Math.random() - 0.5) * 30, 60, (Math.random() - 0.5) * 15);
+            mesh.castShadow = true;
+            mesh.userData = { 
+                velocity: new THREE.Vector3(0, 0, 0), 
+                grabbed: false, 
+                radius: type === 'box' ? size/2 : size/1.5,
+                type: type
+            };
+            scene.add(mesh);
+            objects.push(mesh);
+        }
+
+        function clearScene() {
+            objects.forEach(obj => scene.remove(obj));
+            objects.length = 0;
+            grabbedObject = null;
+        }
+
+        function handleCollisions(obj) {
+            const floorLimit = obj.userData.radius;
+            if (obj.position.y < floorLimit) {
+                obj.position.y = floorLimit;
+                obj.userData.velocity.y *= -BOUNCE;
+                obj.userData.velocity.x *= FRICTION;
+                obj.userData.velocity.z *= FRICTION;
+                if (Math.abs(obj.userData.velocity.y) < 0.1) obj.userData.velocity.y = 0;
+            }
+
+            for (let other of objects) {
+                if (obj === other) continue;
+                const dist = obj.position.distanceTo(other.position);
+                const minDist = obj.userData.radius + other.userData.radius;
+                if (dist < minDist) {
+                    const direction = new THREE.Vector3().subVectors(obj.position, other.position).normalize();
+                    const overlap = minDist - dist;
+                    obj.position.add(direction.multiplyScalar(overlap * 0.5));
+                    if (obj.position.y > other.position.y) {
+                        obj.userData.velocity.y *= 0;
+                        obj.userData.velocity.x *= FRICTION;
+                        obj.userData.velocity.z *= FRICTION;
+                    }
+                }
+            }
+        }
+
+        let lastTime = 0;
+        function animate(time) {
+            requestAnimationFrame(animate);
+            
+            const delta = time - lastTime;
+            lastTime = time;
+            if(time % 20 < 1) {
+                document.getElementById('fps-counter').innerText = `FPS: ${Math.round(1000/delta) || 0}`;
+            }
+
+            handJoints.forEach((joint, i) => {
+                if(joint.visible) {
+                    joint.position.lerp(targetJointPositions[i], SMOOTH_FACTOR);
+                }
+            });
+
+            objects.forEach(obj => {
+                if (!obj.userData.grabbed) {
+                    obj.userData.velocity.y += GRAVITY;
+                    obj.position.add(obj.userData.velocity);
+                    handleCollisions(obj);
+                }
+            });
+
+            const points = [];
+            CONNECTIONS.forEach(chain => {
+                for(let i=0; i < chain.length - 1; i++) {
+                    const s = handJoints[chain[i]], e = handJoints[chain[i+1]];
+                    if(s && e && s.visible && e.visible) points.push(s.position.clone(), e.position.clone());
+                }
+            });
+            muscleLines.geometry.setFromPoints(points);
+            renderer.render(scene, camera);
+        }
+
+        const videoElement = document.getElementById('input_video');
+        const statusText = document.getElementById('status'), statusDot = document.getElementById('status-dot');
+
+        function onResults(results) {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                statusText.innerText = "Tangan Terdeteksi";
+                statusText.style.color = "#4ade80";
+                statusDot.className = "w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_#4ade80]";
+                
+                const landmarks = results.multiHandLandmarks[0];
+                let isNearObject = false;
+
+                landmarks.forEach((lm, i) => {
+                    handJoints[i].visible = true;
+                    targetJointPositions[i].set((0.5 - lm.x) * 70, (0.5 - lm.y) * 50 + 15, lm.z * -80);
+                    
+                    objects.forEach(obj => {
+                        if (targetJointPositions[i].distanceTo(obj.position) < 8.0) isNearObject = true;
+                    });
+                });
+
+                handJoints.forEach(j => {
+                    if (isNearObject) {
+                        j.material.color.setHex(0x00ff88);
+                        j.material.emissiveIntensity = 2.0;
+                    } else {
+                        j.material.color.setHex(0x00d2ff);
+                        j.material.emissiveIntensity = 1.0;
+                    }
+                });
+
+                const thumb = targetJointPositions[4], index = targetJointPositions[8];
+                if (thumb.distanceTo(index) < 4.0) { 
+                    if (!grabbedObject) {
+                        for (let obj of objects) {
+                            if (obj.position.distanceTo(index) < 8.0) {
+                                grabbedObject = obj;
+                                obj.userData.grabbed = true;
+                                break;
+                            }
+                        }
+                    } else {
+                        grabbedObject.position.lerp(index, 0.45);
+                        grabbedObject.userData.velocity.set(0, 0, 0);
+                    }
+                } else if (grabbedObject) {
+                    grabbedObject.userData.grabbed = false;
+                    grabbedObject = null;
+                }
+            } else {
+                statusText.innerText = "Mencari Tangan...";
+                statusText.style.color = "#94a3b8";
+                statusDot.className = "w-2 h-2 rounded-full bg-red-500";
+                handJoints.forEach(j => j.visible = false);
+            }
+        }
+
+        const hands = new Hands({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+        hands.setOptions({ 
+            maxNumHands: 1, 
+            modelComplexity: 0, 
+            minDetectionConfidence: 0.5, 
+            minTrackingConfidence: 0.5 
+        });
+        hands.onResults(onResults);
+        
+        const cameraInstance = new Camera(videoElement, { 
+            onFrame: async () => await hands.send({image: videoElement}), 
+            width: 640, height: 480 
+        });
+
+        window.onload = () => {
+            initThree();
+            cameraInstance.start();
+        };
+    </script>
+</body>
+</html>
+
+```
