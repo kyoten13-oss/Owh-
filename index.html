@@ -1,70 +1,189 @@
 ```html
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Virtual Hand Experience 3D</title>
+    <title>SANS LABORATORY 3D</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <style>
-        body { margin: 0; overflow: hidden; background: #1a1a1a; font-family: sans-serif; }
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=JetBrains+Mono&display=swap');
+
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'JetBrains Mono', monospace; }
         canvas { display: block; }
+
         #video-container {
             position: absolute;
             bottom: 20px;
             right: 20px;
             width: 160px;
             height: 120px;
-            border: 2px solid #3b82f6;
-            border-radius: 12px;
+            border: 2px solid rgba(59, 130, 246, 0.5);
+            border-radius: 16px;
             overflow: hidden;
             z-index: 100;
             background: #000;
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
         }
-        #input_video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); opacity: 0.6; }
+        #input_video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); opacity: 0.7; }
+
         #ui-panel {
             position: absolute;
             top: 20px;
             left: 20px;
             z-index: 200;
-            background: rgba(20, 20, 20, 0.9);
-            backdrop-filter: blur(10px);
-            padding: 15px;
-            border-radius: 12px;
-            border: 1px solid rgba(255,255,255,0.1);
+            background: linear-gradient(135deg, rgba(20, 25, 35, 0.95) 0%, rgba(10, 12, 18, 0.98) 100%);
+            backdrop-filter: blur(15px);
+            padding: 18px;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), inset 0 1px 1px rgba(255,255,255,0.1);
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease;
         }
-        .btn-action { @apply flex items-center justify-center w-full py-2 px-4 rounded-lg font-bold transition-all active:scale-95 mb-2 text-[10px] text-white uppercase tracking-widest; }
+
+        #ui-panel.hidden-menu {
+            transform: translateX(-220px);
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        #menu-toggle {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 210;
+            width: 40px;
+            height: 40px;
+            background: rgba(20, 25, 35, 0.9);
+            border: 1px solid rgba(59, 130, 246, 0.5);
+            border-radius: 12px;
+            color: #3b82f6;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+            transition: all 0.3s ease;
+        }
+
+        .btn-action { 
+            @apply flex items-center justify-between w-full py-2 px-4 rounded-xl font-bold transition-all duration-300 active:scale-95 mb-2 text-[9px] text-white uppercase tracking-[0.15em];
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+
         #loading-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: #111; display: flex; flex-direction: column;
+            background: #05070a; display: flex; flex-direction: column;
             align-items: center; justify-content: center; z-index: 1000; color: white;
+            transition: opacity 0.8s ease;
+        }
+
+        .header-glow {
+            font-family: 'Orbitron', sans-serif;
+            text-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+        }
+
+        .close-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 14px;
+            color: rgba(255,255,255,0.3);
+            cursor: pointer;
+        }
+
+        /* Animasi Jatuh dari Atas */
+        .word-drop {
+            display: inline-block;
+            opacity: 0;
+            transform: translateY(-50px);
+            animation: dropIn 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        .word-drop:nth-child(2) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes dropIn {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Animasi Titik Berkedip */
+        .dot {
+            opacity: 0;
+            animation: blink 1.4s infinite;
+        }
+        .dot:nth-child(1) { animation-delay: 0s; }
+        .dot:nth-child(2) { animation-delay: 0.2s; }
+        .dot:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes blink {
+            0%, 100% { opacity: 0; }
+            50% { opacity: 1; }
         }
     </style>
 </head>
 <body>
 
     <div id="loading-overlay">
-        <div class="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <p class="text-sm font-mono tracking-widest">MENYIAPKAN LABORATORIUM VIRTUAL...</p>
+        <div class="flex flex-wrap justify-center gap-2 md:gap-4 mb-2">
+            <h2 class="header-glow text-lg md:text-xl font-black tracking-[0.4em] text-blue-500 uppercase word-drop">SANS</h2>
+            <h2 class="header-glow text-lg md:text-xl font-black tracking-[0.4em] text-blue-500 uppercase word-drop">
+                LABORATORY
+                <span class="inline-flex w-8">
+                    <span class="dot">.</span><span class="dot">.</span><span class="dot">.</span>
+                </span>
+            </h2>
+        </div>
+        
+        <p id="loading-subtext" class="text-[8px] font-mono tracking-[0.5em] text-blue-300/40 uppercase mb-8">System Initializing...</p>
+        
+        <button id="start-btn" onclick="startApp()" class="hidden px-10 py-3 bg-blue-600/20 hover:bg-blue-600/40 border border-blue-500/50 text-blue-400 rounded-full font-bold tracking-widest text-[10px] uppercase transition-all backdrop-blur-md">START EXPERIENCE</button>
     </div>
 
-    <div id="ui-panel" class="flex flex-col w-48 shadow-2xl">
-        <h1 class="text-blue-400 text-[11px] font-black mb-1 uppercase tracking-widest text-center">Virtual Hand v2.0</h1>
-        <p id="fps-counter" class="text-[9px] text-gray-500 mb-4 text-center font-mono">FPS: --</p>
+    <div id="menu-toggle" onclick="toggleMenu()" style="display: none;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+    </div>
+
+    <div id="ui-panel" class="flex flex-col w-48">
+        <div class="close-btn" onclick="toggleMenu()">✕</div>
+        <div class="mb-3">
+            <h1 class="header-glow text-blue-400 text-[10px] font-black uppercase tracking-[0.2em] text-center">SANS LAB</h1>
+            <div class="w-full h-[1px] bg-gradient-to-r from-transparent via-blue-500/50 to-transparent my-1.5"></div>
+            <p id="fps-counter" class="text-[8px] text-blue-300/40 text-center font-mono tracking-widest">STABLE VERSION</p>
+        </div>
+
+        <button onclick="addObject('box')" class="btn-action bg-gradient-to-br from-orange-600 to-orange-700 hover:brightness-125 border border-orange-500/30"> 
+            <span>Spawn</span> <span>Cube</span> 
+        </button>
+        <button onclick="addObject('sphere')" class="btn-action bg-gradient-to-br from-cyan-600 to-cyan-700 hover:brightness-125 border border-cyan-500/30"> 
+            <span>Spawn</span> <span>Ball</span> 
+        </button>
+        <button onclick="addObject('pillar')" class="btn-action bg-gradient-to-br from-purple-600 to-purple-700 hover:brightness-125 border border-purple-500/30"> 
+            <span>Spawn</span> <span>Pillar</span> 
+        </button>
         
-        <button onclick="addObject('box')" class="btn-action bg-orange-600 hover:bg-orange-500"> + TAMBAH BALOK </button>
-        <button onclick="addObject('sphere')" class="btn-action bg-cyan-600 hover:bg-cyan-500"> + TAMBAH BOLA </button>
+        <div class="my-3 opacity-20 flex items-center gap-2">
+            <div class="h-[1px] bg-white flex-grow"></div>
+            <div class="w-1 h-1 bg-white rounded-full"></div>
+            <div class="h-[1px] bg-white flex-grow"></div>
+        </div>
         
-        <div class="h-[1px] bg-white/10 my-3"></div>
+        <button onclick="clearScene()" class="btn-action bg-white/5 hover:bg-red-500/20 text-red-400 border border-white/5 hover:border-red-500/30"> 
+            <span>Factory</span> <span>Reset</span> 
+        </button>
         
-        <button onclick="clearScene()" class="btn-action bg-red-700 hover:bg-red-600"> RESET ARENA </button>
-        
-        <div id="status-box" class="mt-2 py-1.5 px-2 rounded bg-black/40 border border-white/5 flex items-center justify-center gap-2">
-            <div id="status-dot" class="w-2 h-2 rounded-full bg-red-500"></div>
-            <p id="status" class="text-[9px] text-gray-400 font-mono uppercase">Mencari Tangan...</p>
+        <div id="status-box" class="mt-1 py-1.5 px-3 rounded-xl bg-black/40 border border-white/5 flex items-center gap-3 transition-all duration-500">
+            <div id="status-dot" class="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_5px_rgba(239,68,68,0.5)]"></div>
+            <p id="status" class="text-[8px] text-gray-500 font-bold uppercase tracking-tighter">Standby</p>
         </div>
     </div>
 
@@ -75,85 +194,117 @@
     <script>
         let scene, camera, renderer;
         const objects = [];
-        const handJoints = []; 
-        let muscleLines; 
-        let grabbedObject = null;
         
-        // Pengaturan Posisi Target (Smoothing)
-        const targetJointPositions = Array.from({ length: 21 }, () => new THREE.Vector3());
-        const SMOOTH_FACTOR = 0.35;
+        const handsData = [
+            { joints: [], muscleLines: null, grabbedObject: null, lastGrabPos: new THREE.Vector3(), targetPositions: Array.from({length: 21}, () => new THREE.Vector3()), smoothedPositions: Array.from({length: 21}, () => new THREE.Vector3()), isActive: false, detectionStrength: 0 },
+            { joints: [], muscleLines: null, grabbedObject: null, lastGrabPos: new THREE.Vector3(), targetPositions: Array.from({length: 21}, () => new THREE.Vector3()), smoothedPositions: Array.from({length: 21}, () => new THREE.Vector3()), isActive: false, detectionStrength: 0 }
+        ];
 
-        // Fisika Bumi
-        const GRAVITY = -0.075;
-        const BOUNCE = 0.2;
-        const FRICTION = 0.92;
+        // KONFIGURASI PEREDAM GETARAN (ANTI-JITTER)
+        const SMOOTH_FACTOR = 0.12; // Lebih rendah = Lebih halus, tapi sedikit delay
+        const STRENGTH_THRESHOLD = 5; 
+        const JITTER_THRESHOLD = 0.02; // Ambang batas pergerakan mikro
+        const GRAVITY = -0.08;
+        const BOUNCE = 0.4;
+        const FRICTION = 0.96;
 
         const CONNECTIONS = [
             [0, 1, 2, 3, 4], [0, 5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16], [17, 18, 19, 20], [0, 5, 9, 13, 17, 0]   
         ];
 
-        function createFloorTexture() {
-            const canvas = document.createElement('canvas');
-            canvas.width = 256; canvas.height = 256;
-            const ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(0, 0, 256, 256);
-            ctx.fillStyle = 'rgba(80, 70, 60, 0.08)';
-            for (let i = 0; i < 1500; i++) {
-                ctx.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
+        function hideLoading() {
+            const subtext = document.getElementById('loading-subtext');
+            const btn = document.getElementById('start-btn');
+            if(subtext) subtext.innerText = "READY TO START";
+            if(btn) btn.classList.remove('hidden');
+        }
+
+        function startApp() {
+            const overlay = document.getElementById('loading-overlay');
+            if (overlay) {
+                overlay.style.opacity = '0';
+                setTimeout(() => {
+                    overlay.style.display = 'none';
+                }, 800);
             }
-            const texture = new THREE.CanvasTexture(canvas);
-            texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-            texture.repeat.set(15, 15);
-            return texture;
+        }
+
+        function toggleMenu() {
+            const panel = document.getElementById('ui-panel');
+            const toggle = document.getElementById('menu-toggle');
+            if (panel.classList.contains('hidden-menu')) {
+                panel.classList.remove('hidden-menu');
+                toggle.style.display = 'none';
+            } else {
+                panel.classList.add('hidden-menu');
+                toggle.style.display = 'flex';
+            }
+        }
+
+        function createNeonGrid() {
+            const size = 512;
+            const canvas = document.createElement('canvas');
+            canvas.width = size; canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#050a14';
+            ctx.fillRect(0, 0, size, size);
+            ctx.strokeStyle = '#3b82f6';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(0, 0, size, size);
+            return new THREE.CanvasTexture(canvas);
         }
 
         function initThree() {
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x2a2a2a);
-            scene.fog = new THREE.Fog(0x2a2a2a, 50, 250);
+            scene.background = new THREE.Color(0x020408);
+            scene.fog = new THREE.Fog(0x020408, 20, 200);
 
             camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 35, 80);
-            camera.lookAt(0, 5, 0);
+            camera.position.set(0, 40, 100);
+            camera.lookAt(0, 15, 0);
 
             renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
             renderer.shadowMap.enabled = true;
             document.body.appendChild(renderer.domElement);
 
-            scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-            const pLight = new THREE.PointLight(0xffffff, 1.2, 300);
-            pLight.position.set(30, 80, 50);
-            pLight.castShadow = true;
-            scene.add(pLight);
+            const gridTex = createNeonGrid();
+            gridTex.wrapS = gridTex.wrapT = THREE.RepeatWrapping;
+            gridTex.repeat.set(50, 50);
 
             const floor = new THREE.Mesh(
-                new THREE.PlaneGeometry(500, 500),
-                new THREE.MeshStandardMaterial({ color: 0xffffff, map: createFloorTexture(), roughness: 0.8 })
+                new THREE.PlaneGeometry(1000, 1000),
+                new THREE.MeshStandardMaterial({ map: gridTex, emissive: 0x3b82f6, emissiveIntensity: 0.1, roughness: 0.4 })
             );
             floor.rotation.x = -Math.PI / 2;
             floor.receiveShadow = true;
             scene.add(floor);
 
-            const jointGeo = new THREE.SphereGeometry(0.35, 8, 8);
-            const jointMat = new THREE.MeshStandardMaterial({ 
-                color: 0x00d2ff, emissive: 0x00d2ff, emissiveIntensity: 1.0, metalness: 0.8
-            });
-            
-            for (let i = 0; i < 21; i++) {
-                const joint = new THREE.Mesh(jointGeo, jointMat.clone());
-                joint.visible = false;
-                joint.castShadow = true;
-                scene.add(joint);
-                handJoints.push(joint);
-            }
+            scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+            const spotlight = new THREE.SpotLight(0x00f2ff, 1.0);
+            spotlight.position.set(0, 100, 50); spotlight.castShadow = true;
+            scene.add(spotlight);
 
-            const lineMat = new THREE.LineBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0.4 });
-            const lineGeo = new THREE.BufferGeometry();
-            muscleLines = new THREE.LineSegments(lineGeo, lineMat);
-            scene.add(muscleLines);
+            handsData.forEach((h, hIdx) => {
+                const jointGeo = new THREE.SphereGeometry(0.35, 12, 12);
+                const jointMat = new THREE.MeshStandardMaterial({ 
+                    color: hIdx === 0 ? 0x00d2ff : 0x00ff88, 
+                    emissive: hIdx === 0 ? 0x00d2ff : 0x00ff88, 
+                    emissiveIntensity: 1.5
+                });
+                for (let i = 0; i < 21; i++) {
+                    const joint = new THREE.Mesh(jointGeo, jointMat.clone());
+                    joint.visible = false;
+                    scene.add(joint);
+                    h.joints.push(joint);
+                }
+                h.muscleLines = new THREE.LineSegments(
+                    new THREE.BufferGeometry(), 
+                    new THREE.LineBasicMaterial({ color: hIdx === 0 ? 0x00f2ff : 0x00ff88, transparent: true, opacity: 0.4 })
+                );
+                scene.add(h.muscleLines);
+            });
 
             window.addEventListener('resize', () => {
                 camera.aspect = window.innerWidth / window.innerHeight;
@@ -162,26 +313,20 @@
             });
             
             animate();
-            document.getElementById('loading-overlay').style.display = 'none';
+            setTimeout(hideLoading, 3500);
         }
 
         function addObject(type) {
-            const size = 3.8; 
-            const geo = type === 'box' ? new THREE.BoxGeometry(size, size, size) : new THREE.SphereGeometry(size/1.5, 24, 24);
-            const colors = [0xff00ff, 0x00ff00, 0xffff00, 0xff4400, 0x00ffff, 0x0055ff];
-            const color = colors[Math.floor(Math.random() * colors.length)];
-            const mat = new THREE.MeshStandardMaterial({ 
-                color: color, emissive: color, emissiveIntensity: 0.1, roughness: 0.1, metalness: 0.2
-            });
+            let geo; const size = 5.0; 
+            if(type === 'box') geo = new THREE.BoxGeometry(size, size, size);
+            else if(type === 'sphere') geo = new THREE.SphereGeometry(size/1.5, 24, 24);
+            else if(type === 'pillar') geo = new THREE.CylinderGeometry(size/2, size/2, size*2, 24);
+
+            const mat = new THREE.MeshStandardMaterial({ color: Math.random() * 0xffffff, metalness: 0.4, roughness: 0.2 });
             const mesh = new THREE.Mesh(geo, mat);
-            mesh.position.set((Math.random() - 0.5) * 30, 60, (Math.random() - 0.5) * 15);
+            mesh.position.set((Math.random() - 0.5) * 40, 60, (Math.random() - 0.5) * 10);
             mesh.castShadow = true;
-            mesh.userData = { 
-                velocity: new THREE.Vector3(0, 0, 0), 
-                grabbed: false, 
-                radius: type === 'box' ? size/2 : size/1.5,
-                type: type
-            };
+            mesh.userData = { velocity: new THREE.Vector3(0, 0, 0), grabbed: false, radius: size/2 };
             scene.add(mesh);
             objects.push(mesh);
         }
@@ -189,148 +334,109 @@
         function clearScene() {
             objects.forEach(obj => scene.remove(obj));
             objects.length = 0;
-            grabbedObject = null;
+            handsData.forEach(h => h.grabbedObject = null);
         }
 
-        function handleCollisions(obj) {
-            const floorLimit = obj.userData.radius;
-            if (obj.position.y < floorLimit) {
-                obj.position.y = floorLimit;
-                obj.userData.velocity.y *= -BOUNCE;
-                obj.userData.velocity.x *= FRICTION;
-                obj.userData.velocity.z *= FRICTION;
-                if (Math.abs(obj.userData.velocity.y) < 0.1) obj.userData.velocity.y = 0;
-            }
-
-            for (let other of objects) {
-                if (obj === other) continue;
-                const dist = obj.position.distanceTo(other.position);
-                const minDist = obj.userData.radius + other.userData.radius;
-                if (dist < minDist) {
-                    const direction = new THREE.Vector3().subVectors(obj.position, other.position).normalize();
-                    const overlap = minDist - dist;
-                    obj.position.add(direction.multiplyScalar(overlap * 0.5));
-                    if (obj.position.y > other.position.y) {
-                        obj.userData.velocity.y *= 0;
-                        obj.userData.velocity.x *= FRICTION;
-                        obj.userData.velocity.z *= FRICTION;
-                    }
-                }
-            }
-        }
-
-        let lastTime = 0;
-        function animate(time) {
+        function animate() {
             requestAnimationFrame(animate);
             
-            const delta = time - lastTime;
-            lastTime = time;
-            if(time % 20 < 1) {
-                document.getElementById('fps-counter').innerText = `FPS: ${Math.round(1000/delta) || 0}`;
-            }
-
-            handJoints.forEach((joint, i) => {
-                if(joint.visible) {
-                    joint.position.lerp(targetJointPositions[i], SMOOTH_FACTOR);
-                }
-            });
-
             objects.forEach(obj => {
                 if (!obj.userData.grabbed) {
                     obj.userData.velocity.y += GRAVITY;
                     obj.position.add(obj.userData.velocity);
-                    handleCollisions(obj);
+                    if(obj.position.y < obj.userData.radius) {
+                        obj.position.y = obj.userData.radius;
+                        obj.userData.velocity.y *= -BOUNCE;
+                        obj.userData.velocity.multiplyScalar(FRICTION);
+                    }
                 }
             });
 
-            const points = [];
-            CONNECTIONS.forEach(chain => {
-                for(let i=0; i < chain.length - 1; i++) {
-                    const s = handJoints[chain[i]], e = handJoints[chain[i+1]];
-                    if(s && e && s.visible && e.visible) points.push(s.position.clone(), e.position.clone());
+            handsData.forEach(h => {
+                const isStable = h.isActive && h.detectionStrength >= STRENGTH_THRESHOLD;
+                const points = [];
+                h.joints.forEach((j, i) => {
+                    if (isStable) {
+                        // Smoothing logic per joint
+                        h.smoothedPositions[i].lerp(h.targetPositions[i], SMOOTH_FACTOR);
+                        j.position.copy(h.smoothedPositions[i]);
+                        j.visible = true;
+                    } else {
+                        j.visible = false;
+                    }
+                });
+
+                if (isStable) {
+                    CONNECTIONS.forEach(chain => {
+                        for(let i=0; i < chain.length - 1; i++) {
+                            points.push(h.smoothedPositions[chain[i]].x, h.smoothedPositions[chain[i]].y, h.smoothedPositions[chain[i]].z);
+                            points.push(h.smoothedPositions[chain[i+1]].x, h.smoothedPositions[chain[i+1]].y, h.smoothedPositions[chain[i+1]].z);
+                        }
+                    });
+                    h.muscleLines.geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
+                    h.muscleLines.visible = true;
+                } else {
+                    h.muscleLines.visible = false;
                 }
             });
-            muscleLines.geometry.setFromPoints(points);
+
             renderer.render(scene, camera);
         }
 
-        const videoElement = document.getElementById('input_video');
-        const statusText = document.getElementById('status'), statusDot = document.getElementById('status-dot');
-
         function onResults(results) {
+            const statusBox = document.getElementById('status'), statusDot = document.getElementById('status-dot');
+            const foundIndices = new Set();
+
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                statusText.innerText = "Tangan Terdeteksi";
-                statusText.style.color = "#4ade80";
-                statusDot.className = "w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_#4ade80]";
+                statusBox.innerText = "SENSORS OK (" + results.multiHandLandmarks.length + ")";
+                statusDot.className = "w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_10px_#4ade80]";
                 
-                const landmarks = results.multiHandLandmarks[0];
-                let isNearObject = false;
+                results.multiHandLandmarks.forEach((landmarks, idx) => {
+                    if (idx >= 2) return;
+                    const h = handsData[idx];
+                    h.isActive = true;
+                    h.detectionStrength = Math.min(h.detectionStrength + 1, 15);
+                    foundIndices.add(idx);
 
-                landmarks.forEach((lm, i) => {
-                    handJoints[i].visible = true;
-                    targetJointPositions[i].set((0.5 - lm.x) * 70, (0.5 - lm.y) * 50 + 15, lm.z * -80);
-                    
-                    objects.forEach(obj => {
-                        if (targetJointPositions[i].distanceTo(obj.position) < 8.0) isNearObject = true;
+                    landmarks.forEach((lm, i) => {
+                        // Koordinat target baru dari sensor
+                        const tx = (0.5 - lm.x) * 115;
+                        const ty = (0.5 - lm.y) * 80 + 30;
+                        const tz = lm.z * -110;
+                        
+                        h.targetPositions[i].set(tx, ty, tz);
+                        
+                        // Inisialisasi posisi jika baru terdeteksi
+                        if (h.detectionStrength === 1) h.smoothedPositions[i].copy(h.targetPositions[i]);
                     });
-                });
 
-                handJoints.forEach(j => {
-                    if (isNearObject) {
-                        j.material.color.setHex(0x00ff88);
-                        j.material.emissiveIntensity = 2.0;
-                    } else {
-                        j.material.color.setHex(0x00d2ff);
-                        j.material.emissiveIntensity = 1.0;
-                    }
-                });
+                    if (h.detectionStrength >= STRENGTH_THRESHOLD) {
+                        const thumb = h.smoothedPositions[4], index = h.smoothedPositions[8], palm = h.smoothedPositions[0];
+                        const isPinching = thumb.distanceTo(index) < 7.0;
+                        const isGrasping = [8,12,16,20].reduce((s,i)=>s+h.smoothedPositions[i].distanceTo(palm),0)/4 < 13.0;
+                        const interactionPoint = isPinching ? index : palm;
 
-                const thumb = targetJointPositions[4], index = targetJointPositions[8];
-                if (thumb.distanceTo(index) < 4.0) { 
-                    if (!grabbedObject) {
-                        for (let obj of objects) {
-                            if (obj.position.distanceTo(index) < 8.0) {
-                                grabbedObject = obj;
-                                obj.userData.grabbed = true;
-                                break;
+                        if (isPinching || isGrasping) {
+                            if (!h.grabbedObject) {
+                                for (let obj of objects) {
+                                    if (!obj.userData.grabbed && obj.position.distanceTo(interactionPoint) < 15.0) {
+                                        h.grabbedObject = obj;
+                                        obj.userData.grabbed = true;
+                                        break;
+                                    }
+                                }
+                            } else {
+                                const moveVec = interactionPoint.clone().sub(h.lastGrabPos).multiplyScalar(0.7);
+                                h.grabbedObject.userData.velocity.copy(moveVec);
+                                h.grabbedObject.position.lerp(interactionPoint, 0.45);
+                                h.lastGrabPos.copy(interactionPoint);
                             }
+                        } else if (h.grabbedObject) {
+                            h.grabbedObject.userData.grabbed = false;
+                            h.grabbedObject = null;
                         }
-                    } else {
-                        grabbedObject.position.lerp(index, 0.45);
-                        grabbedObject.userData.velocity.set(0, 0, 0);
                     }
-                } else if (grabbedObject) {
-                    grabbedObject.userData.grabbed = false;
-                    grabbedObject = null;
-                }
+                });
             } else {
-                statusText.innerText = "Mencari Tangan...";
-                statusText.style.color = "#94a3b8";
-                statusDot.className = "w-2 h-2 rounded-full bg-red-500";
-                handJoints.forEach(j => j.visible = false);
-            }
-        }
-
-        const hands = new Hands({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
-        hands.setOptions({ 
-            maxNumHands: 1, 
-            modelComplexity: 0, 
-            minDetectionConfidence: 0.5, 
-            minTrackingConfidence: 0.5 
-        });
-        hands.onResults(onResults);
-        
-        const cameraInstance = new Camera(videoElement, { 
-            onFrame: async () => await hands.send({image: videoElement}), 
-            width: 640, height: 480 
-        });
-
-        window.onload = () => {
-            initThree();
-            cameraInstance.start();
-        };
-    </script>
-</body>
-</html>
-
-```
+                statusBox.innerText = "STANDBY";
+                statusDot.className = "w-1.5 h-1.5 rounded-full bg
